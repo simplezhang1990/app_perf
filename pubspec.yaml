@@ -1,4 +1,4 @@
-name: flutter_application
+name: App_performance_monitor
 description: A new Flutter project.
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
@@ -34,6 +34,10 @@ dependencies:
   getwidget: ^3.1.1
   charts_flutter: ^0.12.0
   process_run: ^0.13.0
+  path_provider: 
+  excel:
+  file_picker:
+  
 
 
   # The following adds the Cupertino Icons font to your application.
