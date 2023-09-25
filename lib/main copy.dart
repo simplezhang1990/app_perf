@@ -1,34 +1,19 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math';
-
+// import 'dart:math';
+import 'package:App_performance_monitor/Util/commonWidget.dart';
+import 'package:flutter/src/painting/text_style.dart' as prefix;
 import 'package:charts_flutter/flutter.dart' as charts;
 import 'package:charts_flutter/flutter.dart';
-import 'package:charts_flutter/src/text_element.dart' as element;
-import 'package:charts_flutter/src/text_element.dart' as chartsTextElement;
-import 'package:charts_flutter/src/text_style.dart' as style;
-import 'package:flutter/src/painting/text_style.dart' as prefix;
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter/material.dart';
 import 'package:getwidget/getwidget.dart';
-
-import 'package:process_run/shell.dart';
+import 'Util/PingData.dart';
+import 'Util/util.dart';
+import 'compare_result.dart';
 
 void main() {
   runApp(MyApp());
-}
-
-Future<String> executeCommand(String executable, List<String> arguments) async {
-  var result = await Process.run(executable, arguments);
-  // print("result:"+result.outText);
-  return result.outText;
-}
-
-class PingData {
-  final DateTime time;
-  final Map<String, int> latency;
-
-  PingData(this.time, this.latency);
 }
 
 class MyApp extends StatefulWidget {
@@ -36,125 +21,17 @@ class MyApp extends StatefulWidget {
   _MyAppState createState() => _MyAppState();
 }
 
-typedef GetText = String Function();
-
-class TextSymbolRenderer extends CircleSymbolRenderer {
-  TextSymbolRenderer(this.getText,
-      {this.marginBottom = 8, this.padding = const EdgeInsets.all(8)});
-
-  final GetText getText;
-  final double marginBottom;
-  final EdgeInsets padding;
-
-  @override
-  void paint(ChartCanvas canvas, Rectangle<num> bounds,
-      {List<int>? dashPattern,
-      Color? fillColor,
-      FillPatternType? fillPattern,
-      Color? strokeColor,
-      double? strokeWidthPx}) {
-    super.paint(canvas, bounds,
-        dashPattern: dashPattern,
-        fillColor: fillColor,
-        fillPattern: fillPattern,
-        strokeColor: strokeColor,
-        strokeWidthPx: strokeWidthPx);
-
-    style.TextStyle textStyle = style.TextStyle();
-    textStyle.color = Color.black;
-    textStyle.fontSize = 15;
-
-    element.TextElement textElement =
-        element.TextElement(getText.call(), style: textStyle);
-    double width = textElement.measurement.horizontalSliceWidth;
-    double height = textElement.measurement.verticalSliceWidth;
-
-    double centerX = bounds.left + bounds.width / 2;
-    double centerY = bounds.top +
-        bounds.height / 2 -
-        marginBottom -
-        (padding.top + padding.bottom);
-
-    canvas.drawRRect(
-      Rectangle(
-        centerX - (width / 2) - padding.left,
-        centerY - (height / 2) - padding.top,
-        width + (padding.left + padding.right),
-        height + (padding.top + padding.bottom),
-      ),
-      fill: Color.white,
-      radius: 16,
-      roundTopLeft: true,
-      roundTopRight: true,
-      roundBottomRight: true,
-      roundBottomLeft: true,
-    );
-    canvas.drawText(
-      textElement,
-      (centerX - (width / 2)).round(),
-      (centerY - (height / 2)).round(),
-    );
-  }
-}
-
-class CustomCircleSymbolRenderer extends charts.CircleSymbolRenderer {
-  @override
-  void paint(charts.ChartCanvas canvas, Rectangle<num> bounds,
-      {List<int>? dashPattern,
-      charts.Color? fillColor,
-      FillPatternType? fillPattern,
-      charts.Color? strokeColor,
-      double? strokeWidthPx}) {
-    super.paint(canvas, bounds,
-        dashPattern: dashPattern,
-        fillColor: fillColor,
-        strokeColor: strokeColor,
-        strokeWidthPx: strokeWidthPx);
-
-    final pointRadius = 5.0;
-    final center =
-        Point(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
-
-    canvas.drawPoint(
-      radius: pointRadius,
-      fill: fillColor!,
-      stroke: strokeColor!,
-      strokeWidthPx: strokeWidthPx!,
-      point: center,
-    );
-
-    final textStyle = style.TextStyle();
-    textStyle.color = charts.Color.black;
-    textStyle.fontSize = 12;
-
-    final label =
-        '(${bounds.left.toStringAsFixed(2)}, ${bounds.top.toStringAsFixed(2)})';
-    canvas.drawText(
-      chartsTextElement.TextElement(label, style: textStyle),
-      (center.x).round(),
-      (center.y - pointRadius - 4).round(),
-    );
-  }
-}
-
-Map<String, int> parseAndroidResponseData(String response) {
-  var perfMap = Map<String, int>();
-  var list = response.split('\n');
-  perfMap['Total Native Heap'] = int.parse(list[7].split(RegExp(r'\s+'))[3]);
-  perfMap['Total Dalvik Heap'] = int.parse(list[8].split(RegExp(r'\s+'))[3]);
-  perfMap['Total'] = int.parse(list[24].split(RegExp(r'\s+'))[2]);
-  return perfMap;
-}
-
 class _MyAppState extends State<MyApp> {
   List<PingData> pingData = [];
+  List<Map<String, dynamic>> analysisResult = [];
   StreamController<PingData> pingDataController = StreamController<PingData>();
   final List<String> platformDropdownItems = ['Android', 'iOS'];
-  List<String> appDropdownItems = ['Please select the platform first!'];
+  List<String> appDropdownItems = [];
   String? selectedPlatform;
   String? selectedApp;
   late Timer _timer;
   final TextEditingController textEditingController = TextEditingController();
+  String duration = '';
 
   @override
   void initState() {
@@ -164,27 +41,57 @@ class _MyAppState extends State<MyApp> {
 
   void _startRecord(String appName) {
     _timer = Timer.periodic(Duration(seconds: 1), (_) async {
-      Map<String, int> latency = await _getPerfData(appName);
+      Map<String, double> latency = await _getAndroidPerfData(appName);
       setState(() {
-        // final ping = PingData(DateTime.now(), Random().nextDouble() * 100.0);
         final ping = PingData(DateTime.now(), latency);
-        // print("pingData:"+ping.latency.toString());
         pingData.add(ping);
         pingDataController.add(ping);
+        duration = formatSecondsToTime(pingData.length);
       });
     });
   }
 
-  void _stopRecord(){
-    _timer.cancel();
-    print('pingData: '+pingData.toString());
+  String formatSecondsToTime(int seconds) {
+    int hours = seconds ~/ 3600;
+    int minutes = (seconds % 3600) ~/ 60;
+    int remainingSeconds = seconds % 60;
+
+    String hoursStr = (hours < 10) ? '0$hours' : '$hours';
+    String minutesStr = (minutes < 10) ? '0$minutes' : '$minutes';
+    String secondsStr =
+        (remainingSeconds < 10) ? '0$remainingSeconds' : '$remainingSeconds';
+
+    return '$hoursStr:$minutesStr:$secondsStr';
   }
 
-  Future<Map<String, int>> _getPerfData(String appName) async {
+  void _stopRecord() {
+    _timer.cancel();
+    saveToExcel(pingData);
+    setState(() {
+      analysisResult = get_analysis_value(pingData);
+    });
+  }
+
+  void _selectRecordAndLoad() async {
+    var records = await pickAndLoadFile();
+    print(records);
+    setState(() {
+      pingData = records;
+      
+      analysisResult = get_analysis_value(records);
+      duration = formatSecondsToTime(pingData.length);
+    });
+  }
+
+  Future<Map<String, double>> _getAndroidPerfData(String appName) async {
     appName = appName.split(':')[1];
-    final response =
+    final memoResponse =
         await executeCommand('adb', ['shell', 'dumpsys', 'meminfo', appName]);
-    return parseAndroidResponseData(response);
+    final CPUResponse =
+        await executeCommand('adb', ['shell', 'dumpsys', 'cpuinfo']);
+    var androidMemo = parseAndroidMemoResponseData(memoResponse);
+    var androidCPU = parseAndroidCPUResponseData(CPUResponse);
+    return {...androidMemo, ...androidCPU};
   }
 
   Future<void> getApplist(String platform) async {
@@ -207,37 +114,62 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    final seriesList = [
-      charts.Series<PingData, DateTime>(
-        id: 'Total Native Heap',
-        colorFn: (_, __) => charts.MaterialPalette.blue.shadeDefault,
+    var lineListAndroidMemo = {
+      'Total Private Dirty': Colors.blue,
+      'Native Private Dirty': Colors.red,
+      'Dalvik Private Dirty': Colors.amber,
+      'EGL Private Dirty': Colors.deepOrange,
+      'GL Private Dirty': Colors.deepPurple,
+      'Total Pss': Colors.green,
+      'Native Pss': Colors.lightGreen,
+      'Dalvik Pss': Colors.lime,
+      'EGL Pss': Colors.blueGrey,
+      'GL Pss': Colors.brown,
+      'Native Heap Allocated Size': Colors.cyan,
+      'Native Heap Size': Colors.indigo,
+    };
+    List<Series<PingData, DateTime>> seriesListAndroidMemo = [];
+    for (var entry in lineListAndroidMemo.entries) {
+      seriesListAndroidMemo.add(charts.Series<PingData, DateTime>(
+        id: entry.key,
+        colorFn: (_, __) => charts.ColorUtil.fromDartColor(entry.value),
         domainFn: (PingData data, _) => data.time,
-        measureFn: (PingData data, _) => data.latency['Total Native Heap'],
+        measureFn: (PingData data, _) => data.latency[entry.key],
         data: pingData,
-        fillColorFn: (_, __) => charts.MaterialPalette.red.shadeDefault,
+        // fillColorFn: (_, __) => charts.MaterialPalette.red.shadeDefault,
+        fillColorFn: (_, __) => charts.ColorUtil.fromDartColor(entry.value),
         radiusPxFn: (PingData data, _) => 5,
-      ),
-      charts.Series<PingData, DateTime>(
-        id: 'Total Dalvik Heap',
-        colorFn: (_, __) => charts.MaterialPalette.pink.shadeDefault,
+        labelAccessorFn: (PingData data, _) => 'labelAccessorFn',
+        displayName: "displayName",
+      ));
+    }
+
+    var lineListAndroidCPU = {
+      'User CPU': Colors.blue,
+      'Total CPU': Colors.red,
+    };
+    List<Series<PingData, DateTime>> seriesListAndroidCPU = [];
+    
+
+
+    for (var entry in lineListAndroidCPU.entries) {
+      seriesListAndroidCPU.add(charts.Series<PingData, DateTime>(
+        id: entry.key,
+        colorFn: (_, __) => charts.ColorUtil.fromDartColor(entry.value),
         domainFn: (PingData data, _) => data.time,
-        measureFn: (PingData data, _) => data.latency['Total Dalvik Heap'],
+        measureFn: (PingData data, _) => data.latency[entry.key],
         data: pingData,
-        fillColorFn: (_, __) => charts.MaterialPalette.red.shadeDefault,
+        // fillColorFn: (_, __) => charts.MaterialPalette.red.shadeDefault,
+        fillColorFn: (_, __) => charts.ColorUtil.fromDartColor(entry.value),
         radiusPxFn: (PingData data, _) => 5,
-      ),
-      charts.Series<PingData, DateTime>(
-        id: 'Total',
-        colorFn: (_, __) => charts.MaterialPalette.green.shadeDefault,
-        domainFn: (PingData data, _) => data.time,
-        measureFn: (PingData data, _) => data.latency['Total'],
-        data: pingData,
-        fillColorFn: (_, __) => charts.MaterialPalette.red.shadeDefault,
-        radiusPxFn: (PingData data, _) => 5,
-      ),
-    ];
+        labelAccessorFn: (PingData data, _) => 'labelAccessorFn',
+        displayName: "displayName",
+      ));
+    }
 
     return MaterialApp(
+      title: "App performance monitor",
+      debugShowCheckedModeBanner: true,
       home: Scaffold(
         appBar: AppBar(title: Text('App Perfoamce Monitor')),
         body: Column(
@@ -301,10 +233,12 @@ class _MyAppState extends State<MyApp> {
                     child: DropdownButton2<String>(
                       isExpanded: true,
                       hint: Text(
-                        'Select Item',
+                        'Please select the platform first!!',
                         style: prefix.TextStyle(
+                          fontWeight: FontWeight.bold,
                           fontSize: 14,
-                          color: Theme.of(context).hintColor,
+                          // color: Theme.of(context).hintColor,
+                          color: Colors.blueGrey,
                         ),
                       ),
                       items: appDropdownItems
@@ -382,12 +316,16 @@ class _MyAppState extends State<MyApp> {
                   height: 40, // Set the desired height
                   child: TextButton(
                     style: ButtonStyle(
+                      backgroundColor:
+                          MaterialStateProperty.resolveWith((states) {
+                        return Colors.blue[200];
+                      }),
                       overlayColor: MaterialStateProperty.resolveWith((states) {
                         // If the button is pressed, return green, otherwise blue
                         if (states.contains(MaterialState.pressed)) {
                           return Colors.green;
                         }
-                        return Colors.lime;
+                        return Colors.green[300];
                       }),
                     ),
                     onPressed: () {
@@ -415,22 +353,211 @@ class _MyAppState extends State<MyApp> {
                     child: Text('Stop Recordings'),
                   ),
                 ),
+                SizedBox(
+                  height: 40, // Set the desired height
+                  child: TextButton(
+                    style: ButtonStyle(
+                      overlayColor: MaterialStateProperty.resolveWith((states) {
+                        // If the button is pressed, return green, otherwise blue
+                        if (states.contains(MaterialState.pressed)) {
+                          return Colors.green;
+                        }
+                        return Colors.lime;
+                      }),
+                    ),
+                    onPressed: () {
+                      _selectRecordAndLoad();
+                    },
+                    child: Text('Load history'),
+                  ),
+                ),
+                SizedBox(
+                  height: 40, // Set the desired height
+                  child: Builder(
+                    builder: (context) => TextButton(
+                      onPressed: () {
+                        // Use the context provided by the Builder widget.
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (context) => CompareHistory()),
+                        );
+                      },
+                      child: Text('Go to Second Page'),
+                    ),
+                  ),
+                ),
               ],
             ),
-            Expanded(
-              child: charts.TimeSeriesChart(
-                seriesList,
-                animate: true,
-                // defaultRenderer:
-                //           new charts.LineRendererConfig(layoutPaintOrder: LayoutViewPaintOrder.domainAxis),
-
-                behaviors: [
-                  charts.ChartTitle('Time',
-                      behaviorPosition: charts.BehaviorPosition.bottom),
-                  charts.ChartTitle('Value',
-                      behaviorPosition: charts.BehaviorPosition.start),
+            Divider(
+              color: Colors.blueAccent, //color of divider
+              height: 5, //height spacing of divider
+              thickness: 3, //thickness of divier line
+              indent: 5, //spacing at the start of divider
+              endIndent: 5, //spacing at the end of divider
+            ),
+            IntrinsicHeight(
+              child: Row(
+                children: [
+                  Column(
+                    children: [
+                      Container(
+                        margin: EdgeInsets.all(30.0),
+                        child: SizedBox(
+                          width: 1000,
+                          height: 250,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: charts.TimeSeriesChart(
+                                  seriesListAndroidMemo,
+                                  animate: true,
+                                  behaviors: [
+                                    charts.ChartTitle('Time($duration)',
+                                        behaviorPosition:
+                                            charts.BehaviorPosition.bottom),
+                                    charts.ChartTitle(
+                                        'Memory Information (Byte)',
+                                        behaviorPosition:
+                                            charts.BehaviorPosition.start),
+                                  ],
+                                ),
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children:
+                                    lineListAndroidMemo.entries.map((entry) {
+                                  String key = entry.key;
+                                  MaterialColor color = entry.value;
+                                  return Row(
+                                    children: [
+                                      Container(
+                                        color: color,
+                                        height: 10,
+                                        width: 10,
+                                      ),
+                                      Text(key),
+                                    ],
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Container(
+                        margin: EdgeInsets.all(30.0),
+                        child: SizedBox(
+                          width: 1000,
+                          height: 250,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: charts.TimeSeriesChart(
+                                  seriesListAndroidCPU,
+                                  animate: true,
+                                  behaviors: [
+                                    charts.ChartTitle('Time($duration)',
+                                        behaviorPosition:
+                                            charts.BehaviorPosition.bottom),
+                                    charts.ChartTitle('CPU Information (%)',
+                                        behaviorPosition:
+                                            charts.BehaviorPosition.start),
+                                  ],
+                                  // domainAxis: new charts.EndPointsTimeAxisSpec(),
+                                ),
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children:
+                                    lineListAndroidCPU.entries.map((entry) {
+                                  String key = entry.key;
+                                  MaterialColor color = entry.value;
+                                  return Row(
+                                    children: [
+                                      Container(
+                                        color: color,
+                                        height: 10,
+                                        width: 10,
+                                      ),
+                                      Text(key),
+                                    ],
+                                  );
+                                }).toList(),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const VerticalDivider(
+                    width: 20,
+                    thickness: 3.0,
+                    indent: 5,
+                    endIndent: 5,
+                    color: Colors.blueAccent,
+                  ),
+                  Column(
+                    children: [
+                      Text(
+                        'Result analysis',
+                        style: prefix.TextStyle(
+                            fontSize: 36.0, fontWeight: FontWeight.bold),
+                      ),
+                      Divider(
+                        color: Colors.blueAccent, //color of divider
+                        height: 5, //height spacing of divider
+                        thickness: 3, //thickness of divier line
+                        indent: 5, //spacing at the start of divider
+                        endIndent: 5, //spacing at the end of divider
+                      ),
+                      DataTable(
+                        border: TableBorder.all(color: Colors.lightGreenAccent),
+                        columns: [
+                          DataColumn(label: Text('Item')),
+                          DataColumn(label: Text('Max')),
+                          DataColumn(label: Text('Min')),
+                          DataColumn(label: Text('Avg')),
+                        ],
+                        rows: analysisResult.map((item) {
+                          return DataRow(cells: [
+                            DataCell(Text(item.keys.elementAt(0))),
+                            DataCell(Text(
+                                item.values.elementAt(0)['Max'].toString())),
+                            DataCell(Text(
+                                item.values.elementAt(0)['Min'].toString())),
+                            DataCell(Text(item.values
+                                .elementAt(0)['Average']
+                                .toStringAsFixed(1))),
+                            // Add more DataCell widgets as per your API response
+                          ]);
+                        }).toList(),
+                      ),
+                      Divider(),
+                    ],
+                  ),
                 ],
               ),
+            ),
+            // StreamBuilder<PingData>(
+            //   stream: pingDataController.stream,
+            //   builder: (context, snapshot) {
+            //     if (snapshot.hasData) {
+            //       return Text(
+            //           'Latest : ${snapshot.data!.latency.toString()} byte');
+            //     } else {
+            //       return Text('No data');
+            //     }
+            //   },
+            // ),
+            Divider(
+              color: Colors.blueAccent, //color of divider
+              height: 5, //height spacing of divider
+              thickness: 3, //thickness of divier line
+              indent: 5, //spacing at the start of divider
+              endIndent: 5, //spacing at the end of divider
             ),
             StreamBuilder<PingData>(
               stream: pingDataController.stream,
