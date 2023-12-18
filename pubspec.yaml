@@ -37,7 +37,8 @@ dependencies:
   path_provider: 
   excel:
   file_picker:
-  
+  cross_scroll:
+  rflutter_alert:
 
 
   # The following adds the Cupertino Icons font to your application.

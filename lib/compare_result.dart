@@ -8,9 +8,11 @@ import 'package:charts_flutter/flutter.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter/material.dart';
 import 'package:getwidget/getwidget.dart';
+import 'package:rflutter_alert/rflutter_alert.dart';
 import 'Util/PingData.dart';
 import 'Util/util.dart';
-import 'main copy.dart';
+import 'main.dart';
+import 'package:cross_scroll/cross_scroll.dart';
 
 class CompareHistory extends StatefulWidget {
   @override
@@ -37,7 +39,8 @@ class _CompareHistoryState extends State<CompareHistory> {
   List<Map<String, dynamic>> memoAnalysisResult = [];
   List<Map<String, dynamic>> cpuAnalysisResult = [];
   StreamController<PingData> pingDataController = StreamController<PingData>();
-
+  String? selectedPlatform;
+  final List<String> platformDropdownItems = ['Android', 'iOS'];
   String duration = '';
 
   @override
@@ -58,10 +61,19 @@ class _CompareHistoryState extends State<CompareHistory> {
     return '$hoursStr:$minutesStr:$secondsStr';
   }
 
-  void _selectRecordsAndLoad() async {
-    var records = await pickHistoryAndLoadFiles(true);
+  void _selectRecordsAndLoad(context) async {
+    if(selectedPlatform==null){
+      customer_alert(context, 'Please select the platform first!!!', AlertType.error);
+      return;
+    }
+    var records = await pickHistoryAndLoadFiles(context,selectedPlatform=='Android');
+    if(records.isEmpty){
+      return;
+    }
+    print('******************');
     setState(() {
       histories = parseTheHistoryData(records);
+      print(histories);
       memoAnalysisResult = get_analysis_value_for_compare(histories[0]);
       cpuAnalysisResult = get_analysis_value_for_compare(histories[1]);
       duration = formatSecondsToTime(histories[0].length);
@@ -77,7 +89,11 @@ class _CompareHistoryState extends State<CompareHistory> {
   @override
   Widget build(BuildContext context) {
     var lineListAndroidMemo = {};
+    var lineListiOSMemo = {};
+    var lineListMemo = {};
     List<Series<PingData, DateTime>> seriesListAndroidMemo = [];
+    List<Series<PingData, DateTime>> seriesListiOSMemo = [];
+    List<Series<PingData, DateTime>> seriesListMemo = [];
     List<PingData> MemoData = [];
     int colorIndex = 0;
     if (histories.length > 0) {
@@ -134,280 +150,323 @@ class _CompareHistoryState extends State<CompareHistory> {
       debugShowCheckedModeBanner: true,
       home: Scaffold(
         appBar: AppBar(title: Text('App Perfoamce Monitor')),
-        body: Column(
-          children: [
-            Row(
-              children: [
-                SizedBox(
-                  height: 40, // Set the desired height
-                  child: TextButton(
-                    style: ButtonStyle(
-                      overlayColor: MaterialStateProperty.resolveWith((states) {
-                        // If the button is pressed, return green, otherwise blue
-                        if (states.contains(MaterialState.pressed)) {
-                          return Colors.green;
-                        }
-                        return Colors.lime;
-                      }),
-                    ),
-                    onPressed: () {
-                      _selectRecordsAndLoad();
-                    },
-                    child: Text('Load history'),
-                  ),
-                ),
-                SizedBox(
-                  height: 40, // Set the desired height
-                  child: Builder(
-                    builder: (context) => TextButton(
-                      onPressed: () {
-                        // Use the context provided by the Builder widget.
-                        Navigator.pop(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => CompareHistory()),
-                        );
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(builder: (context) => MyApp()),
-                        );
-                      },
-                      child: Text('Back to first page'),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            Divider(
-              color: Colors.blueAccent, //color of divider
-              height: 5, //height spacing of divider
-              thickness: 3, //thickness of divier line
-              indent: 5, //spacing at the start of divider
-              endIndent: 5, //spacing at the end of divider
-            ),
-            IntrinsicHeight(
-              child: Row(
+        body: CrossScroll(
+                  child: Column(
+            children: [
+              Row(
                 children: [
-                  Column(
-                    children: [
-                      Container(
-                        margin: EdgeInsets.all(30.0),
-                        child: SizedBox(
-                          width: 1000,
-                          height: 250,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: charts.TimeSeriesChart(
-                                  seriesListAndroidMemo,
-                                  animate: true,
-                                  behaviors: [
-                                    charts.ChartTitle('Time($duration)',
-                                        behaviorPosition:
-                                            charts.BehaviorPosition.bottom),
-                                    charts.ChartTitle(
-                                        'Memory Information (Byte)',
-                                        behaviorPosition:
-                                            charts.BehaviorPosition.start),
-                                  ],
-                                ),
-                              ),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children:
-                                    lineListAndroidMemo.entries.map((entry) {
-                                  String key = entry.key;
-                                  MaterialColor color = entry.value;
-                                  return Row(
-                                    children: [
-                                      Container(
-                                        color: color,
-                                        height: 10,
-                                        width: 10,
-                                      ),
-                                      Text(key),
-                                    ],
-                                  );
-                                }).toList(),
-                              ),
-                            ],
-                          ),
-                        ),
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: Colors.transparent,
+                        width: 20.0,
                       ),
-                      Container(
-                        margin: EdgeInsets.all(30.0),
-                        child: SizedBox(
-                          width: 1000,
-                          height: 250,
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: charts.TimeSeriesChart(
-                                  seriesListAndroidCPU,
-                                  animate: true,
-                                  behaviors: [
-                                    charts.ChartTitle('Time($duration)',
-                                        behaviorPosition:
-                                            charts.BehaviorPosition.bottom),
-                                    charts.ChartTitle('CPU Information (%)',
-                                        behaviorPosition:
-                                            charts.BehaviorPosition.start),
-                                  ],
-                                  // domainAxis: new charts.EndPointsTimeAxisSpec(),
-                                ),
-                              ),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children:
-                                    lineListAndroidCPU.entries.map((entry) {
-                                  String key = entry.key;
-                                  MaterialColor color = entry.value;
-                                  return Row(
-                                    children: [
-                                      Container(
-                                        color: color,
-                                        height: 10,
-                                        width: 10,
-                                      ),
-                                      Text(key),
-                                    ],
-                                  );
-                                }).toList(),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
+                    child: Text(
+                      'Platform:',
+                      style: prefix.TextStyle(
+                          fontSize: 36.0, fontWeight: FontWeight.bold),
+                    ),
                   ),
-                  const VerticalDivider(
-                    width: 20,
-                    thickness: 3.0,
-                    indent: 5,
-                    endIndent: 5,
-                    color: Colors.blueAccent,
-                  ),
-                  Column(
-                    children: [
-                      Text(
-                        'Result analysis',
-                        style: prefix.TextStyle(
-                            fontSize: 36.0, fontWeight: FontWeight.bold),
-                      ),
-                      Divider(
-                        color: Colors.blueAccent, //color of divider
-                        height: 5, //height spacing of divider
-                        thickness: 3, //thickness of divier line
-                        indent: 5, //spacing at the start of divider
-                        endIndent: 5, //spacing at the end of divider
-                      ),
-                      Text(
-                        'Memory',
-                        style: prefix.TextStyle(
-                            fontSize: 25.0, fontWeight: FontWeight.bold),
-                      ),
-                      Divider(
-                        color: Colors.blueAccent, //color of divider
-                        height: 5, //height spacing of divider
-                        thickness: 3, //thickness of divier line
-                        indent: 5, //spacing at the start of divider
-                        endIndent: 5, //spacing at the end of divider
-                      ),
-                      DataTable(
-                        border: TableBorder.all(color: Colors.lightGreenAccent),
-                        columns: [
-                          DataColumn(label: Text('Item')),
-                          DataColumn(label: Text('Max')),
-                          DataColumn(label: Text('Min')),
-                          DataColumn(label: Text('Avg')),
-                        ],
-                        rows: memoAnalysisResult.map((item) {
-                          return DataRow(cells: [
-                            DataCell(Text(item.keys.elementAt(0))),
-                            DataCell(Text(
-                                item.values.elementAt(0)['Max'].toString())),
-                            DataCell(Text(
-                                item.values.elementAt(0)['Min'].toString())),
-                            DataCell(Text(item.values
-                                .elementAt(0)['Average']
-                                .toStringAsFixed(1))),
-                            // Add more DataCell widgets as per your API response
-                          ]);
+                  Container(
+                    // height: 50,
+                    // width: MediaQuery.of(context).size.width / 2,
+                    margin: EdgeInsets.all(5),
+                    child: DropdownButtonHideUnderline(
+                      child: GFDropdown(
+                        padding: const EdgeInsets.all(5),
+                        borderRadius: BorderRadius.circular(5),
+                        border: const BorderSide(color: Colors.black12, width: 1),
+                        dropdownButtonColor: Colors.transparent,
+                        value: selectedPlatform,
+                        dropdownColor: Colors.tealAccent,
+                        onChanged: (newValue) {
+                          setState(() {
+                            if (newValue != null) {
+                              selectedPlatform = newValue;
+                            }
+                          });
+                        },
+                        items: platformDropdownItems.map((String item) {
+                          return DropdownMenuItem<String>(
+                            value: item,
+                            child: Text(item),
+                          );
                         }).toList(),
                       ),
-                      Divider(),
-                      Text(
-                        'CPU',
-                        style: prefix.TextStyle(
-                            fontSize: 25.0, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 40, // Set the desired height
+                    child: TextButton(
+                      style: ButtonStyle(
+                        overlayColor: MaterialStateProperty.resolveWith((states) {
+                          // If the button is pressed, return green, otherwise blue
+                          if (states.contains(MaterialState.pressed)) {
+                            return Colors.green;
+                          }
+                          return Colors.lime;
+                        }),
                       ),
-                      Divider(
-                        color: Colors.blueAccent, //color of divider
-                        height: 5, //height spacing of divider
-                        thickness: 3, //thickness of divier line
-                        indent: 5, //spacing at the start of divider
-                        endIndent: 5, //spacing at the end of divider
+                      onPressed: () {
+                        _selectRecordsAndLoad(context);
+                      },
+                      child: Text('Load history'),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 40, // Set the desired height
+                    child: Builder(
+                      builder: (context) => TextButton(
+                        onPressed: () {
+                          // Use the context provided by the Builder widget.
+                          Navigator.pop(
+                            context,
+                            MaterialPageRoute(
+                                builder: (context) => CompareHistory()),
+                          );
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (context) => HomeApp()),
+                          );
+                        },
+                        child: Text('Back to first page'),
                       ),
-                      DataTable(
-                        border: TableBorder.all(color: Colors.lightGreenAccent),
-                        columns: [
-                          DataColumn(label: Text('Item')),
-                          DataColumn(label: Text('Max')),
-                          DataColumn(label: Text('Min')),
-                          DataColumn(label: Text('Avg')),
-                        ],
-                        rows: cpuAnalysisResult.map((item) {
-                          return DataRow(cells: [
-                            DataCell(Text(item.keys.elementAt(0))),
-                            DataCell(Text(
-                                item.values.elementAt(0)['Max'].toString())),
-                            DataCell(Text(
-                                item.values.elementAt(0)['Min'].toString())),
-                            DataCell(Text(item.values
-                                .elementAt(0)['Average']
-                                .toStringAsFixed(1))),
-                            // Add more DataCell widgets as per your API response
-                          ]);
-                        }).toList(),
-                      ),
-                      Divider(),
-                    ],
+                    ),
                   ),
                 ],
               ),
-            ),
-            // StreamBuilder<PingData>(
-            //   stream: pingDataController.stream,
-            //   builder: (context, snapshot) {
-            //     if (snapshot.hasData) {
-            //       return Text(
-            //           'Latest : ${snapshot.data!.latency.toString()} byte');
-            //     } else {
-            //       return Text('No data');
-            //     }
-            //   },
-            // ),
-            Divider(
-              color: Colors.blueAccent, //color of divider
-              height: 5, //height spacing of divider
-              thickness: 3, //thickness of divier line
-              indent: 5, //spacing at the start of divider
-              endIndent: 5, //spacing at the end of divider
-            ),
-            StreamBuilder<PingData>(
-              stream: pingDataController.stream,
-              builder: (context, snapshot) {
-                if (snapshot.hasData) {
-                  return Text(
-                      'Latest : ${snapshot.data!.latency.toString()} byte');
-                } else {
-                  return Text('No data');
-                }
-              },
-            ),
-          ],
+              Divider(
+                color: Colors.blueAccent, //color of divider
+                height: 5, //height spacing of divider
+                thickness: 3, //thickness of divier line
+                indent: 5, //spacing at the start of divider
+                endIndent: 5, //spacing at the end of divider
+              ),
+              IntrinsicHeight(
+                child: Row(
+                  children: [
+                    Column(
+                      children: [
+                        Container(
+                          margin: EdgeInsets.all(30.0),
+                          child: SizedBox(
+                            width: 1000,
+                            height: 250,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: charts.TimeSeriesChart(
+                                    seriesListAndroidMemo,
+                                    animate: true,
+                                    behaviors: [
+                                      charts.ChartTitle('Time($duration)',
+                                          behaviorPosition:
+                                              charts.BehaviorPosition.bottom),
+                                      charts.ChartTitle(
+                                          'Memory Information (MB)',
+                                          behaviorPosition:
+                                              charts.BehaviorPosition.start),
+                                    ],
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children:
+                                      lineListAndroidMemo.entries.map((entry) {
+                                    String key = entry.key;
+                                    MaterialColor color = entry.value;
+                                    return Row(
+                                      children: [
+                                        Container(
+                                          color: color,
+                                          height: 10,
+                                          width: 10,
+                                        ),
+                                        Text(key),
+                                      ],
+                                    );
+                                  }).toList(),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        Container(
+                          margin: EdgeInsets.all(30.0),
+                          child: SizedBox(
+                            width: 1000,
+                            height: 250,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: charts.TimeSeriesChart(
+                                    seriesListAndroidCPU,
+                                    animate: true,
+                                    behaviors: [
+                                      charts.ChartTitle('Time($duration)',
+                                          behaviorPosition:
+                                              charts.BehaviorPosition.bottom),
+                                      charts.ChartTitle('CPU Information (%)',
+                                          behaviorPosition:
+                                              charts.BehaviorPosition.start),
+                                    ],
+                                    // domainAxis: new charts.EndPointsTimeAxisSpec(),
+                                  ),
+                                ),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children:
+                                      lineListAndroidCPU.entries.map((entry) {
+                                    String key = entry.key;
+                                    MaterialColor color = entry.value;
+                                    return Row(
+                                      children: [
+                                        Container(
+                                          color: color,
+                                          height: 10,
+                                          width: 10,
+                                        ),
+                                        Text(key),
+                                      ],
+                                    );
+                                  }).toList(),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const VerticalDivider(
+                      width: 20,
+                      thickness: 3.0,
+                      indent: 5,
+                      endIndent: 5,
+                      color: Colors.blueAccent,
+                    ),
+                    Column(
+                      children: [
+                        Text(
+                          'Result analysis',
+                          style: prefix.TextStyle(
+                              fontSize: 36.0, fontWeight: FontWeight.bold),
+                        ),
+                        Divider(
+                          color: Colors.blueAccent, //color of divider
+                          height: 5, //height spacing of divider
+                          thickness: 3, //thickness of divier line
+                          indent: 5, //spacing at the start of divider
+                          endIndent: 5, //spacing at the end of divider
+                        ),
+                        Text(
+                          'Memory(MB)',
+                          style: prefix.TextStyle(
+                              fontSize: 25.0, fontWeight: FontWeight.bold),
+                        ),
+                        Divider(
+                          color: Colors.blueAccent, //color of divider
+                          height: 5, //height spacing of divider
+                          thickness: 3, //thickness of divier line
+                          indent: 5, //spacing at the start of divider
+                          endIndent: 5, //spacing at the end of divider
+                        ),
+                        DataTable(
+                          border: TableBorder.all(color: Colors.lightGreenAccent),
+                          columns: [
+                            DataColumn(label: Text('Item')),
+                            DataColumn(label: Text('Max')),
+                            DataColumn(label: Text('Min')),
+                            DataColumn(label: Text('Avg')),
+                          ],
+                          rows: memoAnalysisResult.map((item) {
+                            return DataRow(cells: [
+                              DataCell(Text(item.keys.elementAt(0))),
+                              DataCell(Text(
+                                  item.values.elementAt(0)['Max'].toStringAsFixed(2))),
+                              DataCell(Text(
+                                  item.values.elementAt(0)['Min'].toStringAsFixed(2))),
+                              DataCell(Text(item.values
+                                  .elementAt(0)['Average']
+                                  .toStringAsFixed(2))),
+                              // Add more DataCell widgets as per your API response
+                            ]);
+                          }).toList(),
+                        ),
+                        Divider(),
+                        Text(
+                          'CPU(%)',
+                          style: prefix.TextStyle(
+                              fontSize: 25.0, fontWeight: FontWeight.bold),
+                        ),
+                        Divider(
+                          color: Colors.blueAccent, //color of divider
+                          height: 5, //height spacing of divider
+                          thickness: 3, //thickness of divier line
+                          indent: 5, //spacing at the start of divider
+                          endIndent: 5, //spacing at the end of divider
+                        ),
+                        DataTable(
+                          border: TableBorder.all(color: Colors.lightGreenAccent),
+                          columns: [
+                            DataColumn(label: Text('Item')),
+                            DataColumn(label: Text('Max')),
+                            DataColumn(label: Text('Min')),
+                            DataColumn(label: Text('Avg')),
+                          ],
+                          rows: cpuAnalysisResult.map((item) {
+                            return DataRow(cells: [
+                              DataCell(Text(item.keys.elementAt(0))),
+                              DataCell(Text(
+                                  item.values.elementAt(0)['Max'].toStringAsFixed(2))),
+                              DataCell(Text(
+                                  item.values.elementAt(0)['Min'].toStringAsFixed(2))),
+                              DataCell(Text(item.values
+                                  .elementAt(0)['Average']
+                                  .toStringAsFixed(2))),
+                              // Add more DataCell widgets as per your API response
+                            ]);
+                          }).toList(),
+                        ),
+                        Divider(),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              // StreamBuilder<PingData>(
+              //   stream: pingDataController.stream,
+              //   builder: (context, snapshot) {
+              //     if (snapshot.hasData) {
+              //       return Text(
+              //           'Latest : ${snapshot.data!.latency.toString()} byte');
+              //     } else {
+              //       return Text('No data');
+              //     }
+              //   },
+              // ),
+              Divider(
+                color: Colors.blueAccent, //color of divider
+                height: 5, //height spacing of divider
+                thickness: 3, //thickness of divier line
+                indent: 5, //spacing at the start of divider
+                endIndent: 5, //spacing at the end of divider
+              ),
+              StreamBuilder<PingData>(
+                stream: pingDataController.stream,
+                builder: (context, snapshot) {
+                  if (snapshot.hasData) {
+                    return Text(
+                        'Latest : ${snapshot.data!.latency.toString()} byte');
+                  } else {
+                    return Text('No data');
+                  }
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

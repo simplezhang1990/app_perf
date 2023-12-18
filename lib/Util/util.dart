@@ -7,8 +7,10 @@ import 'PingData.dart';
 import 'package:excel/excel.dart' as excel;
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:rflutter_alert/rflutter_alert.dart';
+import 'package:flutter/material.dart';
 
-List<String> rowList = [
+List<String> rowListAndroid = [
   'Total Private Dirty',
   'Native Private Dirty',
   'Dalvik Private Dirty',
@@ -25,11 +27,21 @@ List<String> rowList = [
   'Total CPU'
 ];
 
-void saveToExcel(List<PingData> list) async {
+List<String> rowListiOS = ['memory', 'cpu'];
+
+void saveToExcel(List<PingData> list, String platform) async {
   var excelTmp = excel.Excel.createExcel();
   var sheetName = 'Sheet1';
   var sheet = excelTmp[sheetName];
 
+  print(list);
+  print(platform);
+  var rowList;
+  if (platform == 'Android') {
+    rowList = rowListAndroid;
+  } else {
+    rowList = rowListiOS;
+  }
   // Add headers
   sheet.appendRow(['Time'] + rowList);
 
@@ -68,43 +80,78 @@ void saveToExcel(List<PingData> list) async {
   print('Excel file saved at: $filePath');
 }
 
-List<Map<String, dynamic>> get_analysis_value(List<PingData> list) {
+List<Map<String, dynamic>> get_analysis_value(
+    List<PingData> list, String memoKey, String cpuKey,
+    {String platform = 'Android'}) {
   List<Map<String, dynamic>> analysis_list = [];
-  var memo_average = list.map((m) => m.latency['Total Pss']!).average;
-  var memo_max = list.map((m) => m.latency['Total Pss']!).max;
-  var memo_min = list.map((m) => m.latency['Total Pss']!).min;
-  var cpu_average = list.map((m) => m.latency['Total CPU']!).average;
-  var cpu_max = list.map((m) => m.latency['Total CPU']!).max;
-  var cpu_min = list.map((m) => m.latency['Total CPU']!).min;
-  analysis_list.add({
-    'Memo(Byte)': {'Max': memo_max, 'Min': memo_min, 'Average': memo_average}
-  });
+  var memo_average = list.map((m) => m.latency[memoKey]!).average;
+  var memo_max = list.map((m) => m.latency[memoKey]!).max;
+  var memo_min = list.map((m) => m.latency[memoKey]!).min;
+  var cpu_average = list.map((m) => m.latency[cpuKey]!).average;
+  var cpu_max = list.map((m) => m.latency[cpuKey]!).max;
+  var cpu_min = list.map((m) => m.latency[cpuKey]!).min;
+
+  if (platform == 'Android') {
+    analysis_list.add({
+      'Memo(MB)': {
+        'Max': memo_max / 1024,
+        'Min': memo_min / 1024,
+        'Average': memo_average / 1024
+      }
+    });
+  } else {
+    analysis_list.add({
+      'Memo(MB)': {'Max': memo_max, 'Min': memo_min, 'Average': memo_average}
+    });
+  }
   analysis_list.add({
     'CPU(%)': {'Max': cpu_max, 'Min': cpu_min, 'Average': cpu_average}
   });
   return analysis_list;
 }
 
-List<Map<String, dynamic>> get_analysis_value_for_compare(List<PingData> list){
+List<Map<String, dynamic>> get_analysis_value_for_compare(List<PingData> list) {
   List<Map<String, dynamic>> analysis_list = [];
-  for(var key in list[0].latency.keys){
+  for (var key in list[0].latency.keys) {
     var average = list.map((m) => m.latency[key]!).average;
     var max = list.map((m) => m.latency[key]!).max;
     var min = list.map((m) => m.latency[key]!).min;
-    analysis_list.add({key:{'Max': max, 'Min': min, 'Average': average}});
+    analysis_list.add({
+      key: {'Max': max, 'Min': min, 'Average': average}
+    });
   }
   return analysis_list;
 }
 
-Future<String> executeCommand(String executable, List<String> arguments) async {
-  var result = await Process.run(executable, arguments);
-  // print("result:"+result.outText);
-  return result.outText;
+Future<String> executeCommand(String executable, List<String> arguments, context) async {
+  
+  try {
+        var result = await Process.run(executable, arguments);
+        print("result:" + result.errText);
+        print("result:" + result.outText);
+        if (result.errText.contains('no devices')|result.errText.contains('No local device')) {
+          return result.errText;
+        } else {
+          return result.outText;
+        }
+      } on Exception catch (e) {
+        customer_alert(
+            context,
+            'Exception: $e',
+            AlertType.error);
+      }
+  return '';
 }
 
-Future<List<PingData>> pickAndLoadFile() async {
+Future<List<PingData>> pickAndLoadFile(String platform, context) async {
   FilePickerResult? result = await FilePicker.platform.pickFiles();
   List<PingData> recordList = [];
+  var rowList;
+  if (platform == 'Android') {
+    rowList = rowListAndroid;
+  } else {
+    rowList = rowListiOS;
+  }
   if (result != null) {
     File file = File(result.files.single.path!);
 
@@ -112,7 +159,24 @@ Future<List<PingData>> pickAndLoadFile() async {
     final bytes = await file.readAsBytes();
     final record = excel.Excel.decodeBytes(bytes);
     var sheetName = record.tables.keys.first;
+    var table = record.tables[sheetName];
+    int memoIndex = 0;
+    int cpuIndex = 0;
+    if (platform == 'Android') {
+      memoIndex = findTheColumnIndex(table, 'Total Pss');
+      cpuIndex = findTheColumnIndex(table, 'User CPU');
+    } else {
+      memoIndex = findTheColumnIndex(table, 'memory');
+      cpuIndex = findTheColumnIndex(table, 'cpu');
+    }
 
+    if (memoIndex == 0) {
+      customer_alert(
+          context,
+          'Invalid file format, please select the file match to the platform: $platform',
+          AlertType.error);
+      return recordList;
+    }
     for (int row = 1; row < record.tables[sheetName]!.maxRows; row++) {
       var perfMap = Map<String, double>();
       for (int col = 1; col < record.tables[sheetName]!.maxCols; col++) {
@@ -139,15 +203,21 @@ Future<List<PingData>> pickAndLoadFile() async {
   return recordList;
 }
 
-Future<Map<String, Map<String, List<dynamic>>>> pickHistoryAndLoadFiles(bool isAndroid) async {
+Future<Map<String, Map<String, List<dynamic>>>> pickHistoryAndLoadFiles(
+    context, bool isAndroid) async {
   FilePickerResult? result =
       await FilePicker.platform.pickFiles(allowMultiple: true);
   // List<HistoryData> recordList = [];
-
-  Map<String, Map<String, List<dynamic>>> records={};
+  String platform = '';
+  if (isAndroid) {
+    platform = 'Android';
+  } else {
+    platform = 'iOS';
+  }
+  Map<String, Map<String, List<dynamic>>> records = {};
   if (result != null) {
     List<File> files = result.paths.map((path) => File(path!)).toList();
-    
+
     for (var file in files) {
       final bytes = await file.readAsBytes();
       final record = excel.Excel.decodeBytes(bytes);
@@ -155,17 +225,26 @@ Future<Map<String, Map<String, List<dynamic>>>> pickHistoryAndLoadFiles(bool isA
       var table = record.tables[sheetName];
       int memoIndex = 0;
       int cpuIndex = 0;
-      Map<String, List<dynamic>> item={};
-      if (isAndroid)
+      String seperator = Platform.pathSeparator;
+      Map<String, List<dynamic>> item = {};
+      if (isAndroid) {
         memoIndex = findTheColumnIndex(table, 'Total Pss');
-      else
-        memoIndex = findTheColumnIndex(table, 'Total Pss');
-      cpuIndex = findTheColumnIndex(table, 'User CPU');
+        cpuIndex = findTheColumnIndex(table, 'User CPU');
+      } else {
+        memoIndex = findTheColumnIndex(table, 'memory');
+        cpuIndex = findTheColumnIndex(table, 'cpu');
+      }
 
+      if (memoIndex == 0) {
+        customer_alert(
+            context,
+            'Invalid file format, please select the file match to the platform: $platform',
+            AlertType.error);
+        return records;
+      }
       List<double> memoList = [];
       List<double> cpuList = [];
       for (int row = 1; row < record.tables[sheetName]!.maxRows; row++) {
-        
         memoList.add(table!
             .cell(excel.CellIndex.indexByColumnRow(
                 columnIndex: memoIndex, rowIndex: row))
@@ -176,10 +255,11 @@ Future<Map<String, Map<String, List<dynamic>>>> pickHistoryAndLoadFiles(bool isA
             .value);
       }
 
-      item['Memo']=memoList;
-      item['CPU']=cpuList;
+      item['Memo'] = memoList;
+      item['CPU'] = cpuList;
 
-      records[file.path.split("\\")[file.path.split("\\").length-1]]=item;
+      records[file.path
+          .split(seperator)[file.path.split(seperator).length - 1]] = item;
       // recordList.add(HistoryData(file.path.split("\\")[file.path.split("\\").length-1],item));
     }
 
@@ -190,6 +270,26 @@ Future<Map<String, Map<String, List<dynamic>>>> pickHistoryAndLoadFiles(bool isA
   }
 
   return records;
+}
+
+void customer_alert(context, desc, alert_type) {
+  Alert(
+    context: context,
+    // title: "Info",
+    desc: desc,
+    type: alert_type,
+    buttons: [
+      DialogButton(
+          child: Text(
+            "OK",
+            style: TextStyle(color: Colors.white, fontSize: 20),
+          ),
+          onPressed: () => Navigator.pop(context),
+          color: Colors.blueAccent,
+          radius: BorderRadius.circular(20)),
+    ],
+    useRootNavigator: false,
+  ).show();
 }
 
 int findTheColumnIndex(table, columnName) {
@@ -204,30 +304,30 @@ int findTheColumnIndex(table, columnName) {
   return 0;
 }
 
-List<List<PingData>> parseTheHistoryData(Map<String, Map<String, List<dynamic>>> records){
+List<List<PingData>> parseTheHistoryData(
+    Map<String, Map<String, List<dynamic>>> records) {
   List<PingData> pingDataMemo = [];
   List<PingData> pingDataCPU = [];
   DateTime dateTime = DateTime.fromMicrosecondsSinceEpoch(0);
   int listLength = records[records.keys.first]!['Memo']!.length;
-  for(var key in records.keys){
-    if(records[key]!['Memo']!.length<listLength){
+  for (var key in records.keys) {
+    if (records[key]!['Memo']!.length < listLength) {
       listLength = records[key]!['Memo']!.length;
     }
   }
 
-
-  for(int i=0;i<listLength;i++){
-    Map<String,double> memos ={};
-    Map<String,double> cpus ={};
-    for(var key in records.keys){
-      memos[key]=records[key]!['Memo']![i];
-      cpus[key]=records[key]!['CPU']![i];
+  for (int i = 0; i < listLength; i++) {
+    Map<String, double> memos = {};
+    Map<String, double> cpus = {};
+    for (var key in records.keys) {
+      memos[key] = records[key]!['Memo']![i];
+      cpus[key] = records[key]!['CPU']![i];
     }
     pingDataMemo.add(PingData(dateTime, memos));
     pingDataCPU.add(PingData(dateTime, cpus));
     dateTime = dateTime.add(Duration(seconds: 1));
   }
-  return [pingDataMemo,pingDataCPU];
+  return [pingDataMemo, pingDataCPU];
 }
 
 Map<String, double> parseAndroidMemoResponseData(String response) {
