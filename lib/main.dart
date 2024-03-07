@@ -8,15 +8,19 @@ import 'package:charts_flutter/flutter.dart';
 import 'package:dropdown_button2/dropdown_button2.dart';
 import 'package:flutter/material.dart';
 import 'package:getwidget/getwidget.dart';
+import 'package:path_provider/path_provider.dart';
 import 'Util/PingData.dart';
 import 'Util/util.dart';
 import 'compare_result.dart';
 import 'package:cross_scroll/cross_scroll.dart';
 import 'package:rflutter_alert/rflutter_alert.dart';
+import "package:path/path.dart" show dirname,join;
 
 void main() {
+  // runApp(const HomeApp());
   runApp(const HomeApp());
 }
+
 
 class HomeApp extends StatefulWidget {
   const HomeApp({super.key});
@@ -43,6 +47,7 @@ class _MyAppState extends State<HomeApp> {
   void initState() {
     super.initState();
     // _startPing();
+    
   }
 
   void _startRecord(String appName) {
@@ -63,10 +68,16 @@ class _MyAppState extends State<HomeApp> {
     }
   }
 
-  _onBasicAlertPressed(context) {
+  _onBasicAlertPressed(context)  async {
     if (selectedPlatform == null) {
+      Map<String, String> envVars = Platform.environment;
+      var filePath = join(envVars['HOME']!,'perfConfig.json');
+      File file=File(filePath);
+      final data = await json.decode(await file.readAsString());
+      print(data);
+      print(data['adbPath']);
       customer_alert(
-          context, 'Please select the platform first!', AlertType.error);
+          context, data['adbPath'], AlertType.error);
     } else {
       customer_alert(context, 'The selected platform is $selectedPlatform',
           AlertType.info);
@@ -133,9 +144,9 @@ class _MyAppState extends State<HomeApp> {
   Future<Map<String, double>> _getAndroidPerfData(String appName) async {
     appName = appName.split(':')[1];
     final memoResponse =
-        await executeCommand('adb', ['shell', 'dumpsys', 'meminfo', appName],context);
+        await executeCommand('adb shell dumpsys meminfo $appName',context);
     final CPUResponse =
-        await executeCommand('adb', ['shell', 'dumpsys', 'cpuinfo'],context);
+        await executeCommand('adb shell dumpsys cpuinfo',context);
     var androidMemo = parseAndroidMemoResponseData(memoResponse);
     var androidCPU = parseAndroidCPUResponseData(CPUResponse);
     return {...androidMemo, ...androidCPU};
@@ -155,18 +166,18 @@ class _MyAppState extends State<HomeApp> {
     iOSProcess.stdout.transform(utf8.decoder).forEach((test) {
       if (test.startsWith('cpu') || test.startsWith('memory')) {
         print('============ start ============');
-        var response_list = test.split('\n');
-        for (var line in response_list) {
+        var responseList = test.split('\n');
+        for (var line in responseList) {
           if (line.startsWith('cpu')) {
-            var source_value =
+            var sourceValue =
                 json.decode(line.substring('cpu'.length + 1, line.length));
-            list['timestamp'] = source_value['timestamp'];
-            list['cpu'] = source_value['value'];
+            list['timestamp'] = sourceValue['timestamp'];
+            list['cpu'] = sourceValue['value'];
           }
           if (line.startsWith('memory')) {
-            var source_value =
+            var sourceValue =
                 json.decode(line.substring('memory'.length + 1, line.length));
-            list['memory'] = source_value['value'];
+            list['memory'] = sourceValue['value'];
           }
 
           if (list.keys.length > 2) {
@@ -195,10 +206,10 @@ class _MyAppState extends State<HomeApp> {
     });
   }
 
-  Future<void> getApplist(String platform) async {
+  Future<void> getApplist(String platform,context) async {
     if (platform == 'Android') {
       final response = await executeCommand(
-          'adb', ['shell', 'cmd', 'package', 'list', 'packages', '-3'], context);
+          'adb shell cmd package list packages -3', context);
       print('dsdsd**************');
       print(response.contains('no devices/emulators found'));
 
@@ -212,7 +223,7 @@ class _MyAppState extends State<HomeApp> {
         }
       });
     } else {
-      final response = await executeCommand('tidevice', ['applist'],context);
+      final response = await executeCommand('tidevice applist',context);
       print('**************');
       print(response);
       var appList = response.split('\n');
@@ -370,39 +381,43 @@ class _MyAppState extends State<HomeApp> {
                     // height: 50,
                     // width: MediaQuery.of(context).size.width / 2,
                     margin: EdgeInsets.all(5),
-                    child: DropdownButtonHideUnderline(
-                      child: GFDropdown(
-                        padding: const EdgeInsets.all(5),
-                        borderRadius: BorderRadius.circular(5),
-                        border:
-                            const BorderSide(color: Colors.black12, width: 1),
-                        dropdownButtonColor: Colors.transparent,
-                        value: selectedPlatform,
-                        dropdownColor: Colors.tealAccent,
-                        onChanged: (newValue) {
-                          setState(() {
-                            if (newValue != null) {
-                              selectedPlatform = newValue;
-                            }
-                          });
-                          if (newValue != null) {
-                            try {
-                              getApplist(newValue);
-                            } on Exception catch (e) {
-                              customer_alert(
-                                  context,
-                                  'Exception: $e',
-                                  AlertType.error);
-                            }
-                          }
-                        },
-                        items: platformDropdownItems.map((String item) {
-                          return DropdownMenuItem<String>(
-                            value: item,
-                            child: Text(item),
-                          );
-                        }).toList(),
-                      ),
+                    child: Builder(
+                      builder: (context) {
+                        return DropdownButtonHideUnderline(
+                          child: GFDropdown(
+                            padding: const EdgeInsets.all(5),
+                            borderRadius: BorderRadius.circular(5),
+                            border:
+                                const BorderSide(color: Colors.black12, width: 1),
+                            dropdownButtonColor: Colors.transparent,
+                            value: selectedPlatform,
+                            dropdownColor: Colors.tealAccent,
+                            onChanged: (newValue) async {
+                              setState(() {
+                                if (newValue != null) {
+                                  selectedPlatform = newValue;
+                                }
+                              });
+                              if (newValue != null) {
+                                try {
+                                  getApplist(newValue,context);
+                                } on Exception catch (e) {
+                                  customer_alert(
+                                      context,
+                                      'Exception: $e',
+                                      AlertType.error);
+                                }
+                              }
+                            },
+                            items: platformDropdownItems.map((String item) {
+                              return DropdownMenuItem<String>(
+                                value: item,
+                                child: Text(item),
+                              );
+                            }).toList(),
+                          ),
+                        );
+                      }
                     ),
                   ),
                   Container(

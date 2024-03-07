@@ -1,14 +1,18 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'package:App_performance_monitor/Util/HistoryData.dart';
-import 'package:process_run/shell.dart';
+// import 'package:process_run/shell.dart';
 import 'package:collection/collection.dart';
+import 'package:process_run/shell.dart';
 import 'PingData.dart';
 import 'package:excel/excel.dart' as excel;
 import 'package:path_provider/path_provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:rflutter_alert/rflutter_alert.dart';
 import 'package:flutter/material.dart';
+import "package:path/path.dart" show dirname,join;
+import 'dart:io' show Platform;
 
 List<String> rowListAndroid = [
   'Total Private Dirty',
@@ -28,6 +32,33 @@ List<String> rowListAndroid = [
 ];
 
 List<String> rowListiOS = ['memory', 'cpu'];
+String adbPath = '';
+String pythonPath = '';
+
+Future<Map<String, dynamic>> initToolPath() async {
+  Map<String, String> envVars = Platform.environment;
+  var filePath = join(envVars['HOME']!,'perfConfig.json');
+  File file=File(filePath);
+  Map<String,dynamic>  data = await json.decode(await file.readAsString());
+  return data;
+  // adbPath = data['adbPath'];
+  // pythonPath = data['pythonPath'];
+}
+
+Future<String> getADBPath() async {
+  if(adbPath==''){
+    var data = initToolPath();
+    // return data['adbPath'];
+  }
+  return adbPath;
+}
+
+String getPythonPath(){
+  if(pythonPath==''){
+    initToolPath();
+  }
+  return pythonPath;
+}
 
 void saveToExcel(List<PingData> list, String platform) async {
   var excelTmp = excel.Excel.createExcel();
@@ -123,22 +154,28 @@ List<Map<String, dynamic>> get_analysis_value_for_compare(List<PingData> list) {
   return analysis_list;
 }
 
-Future<String> executeCommand(String executable, List<String> arguments, context) async {
-  
+void log(message) {
+  print(message);
+  File file=File('/Users/hsbcnetmobileft/Desktop/test.txt');
+  file.writeAsStringSync(message+Platform.lineTerminator,mode: FileMode.append);
+}
+
+Future<String> executeCommand(String command, context) async {
+  var result;
+  var finalCommand;
   try {
-        var result = await Process.run(executable, arguments);
-        print("result:" + result.errText);
-        print("result:" + result.outText);
-        if (result.errText.contains('no devices')|result.errText.contains('No local device')) {
-          return result.errText;
-        } else {
-          return result.outText;
+        // var result = await Process.run(executable, arguments);
+        var shell = Shell();
+        var data = await initToolPath();
+        if(command.contains('adb')){
+          finalCommand = join(data["adbPath"],command) ;
+        }else{
+          finalCommand = join(data["pythonPath"],'python3 -m '+command);
         }
-      } on Exception catch (e) {
-        customer_alert(
-            context,
-            'Exception: $e',
-            AlertType.error);
+        var result = await shell.run(finalCommand);
+        return result.outText;
+      } on ShellException catch (e) {
+        return e.result?.stderr;
       }
   return '';
 }
@@ -276,7 +313,7 @@ void customer_alert(context, desc, alert_type) {
   Alert(
     context: context,
     // title: "Info",
-    desc: desc,
+    desc: desc.toString(),
     type: alert_type,
     buttons: [
       DialogButton(
