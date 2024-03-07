@@ -218,6 +218,7 @@ class _MyAppState extends State<HomeApp> {
           appListHint = 'No devices/emulators found';
           print(appListHint);
         } else {
+          appListHint = 'Please select the testing app';
           appDropdownItems =
               response.split('\n'); // Split the response by newline
         }
@@ -235,6 +236,7 @@ class _MyAppState extends State<HomeApp> {
           appListHint = 'No devices/emulators found';
           print(appListHint);
         } else {
+          appListHint = 'Please select the testing app';
           appDropdownItems = appList;
         } // Split the response by newline
       });
@@ -594,18 +596,18 @@ class _MyAppState extends State<HomeApp> {
                       ),
                     ),
                   ),
-                  SizedBox(
-                    height: 40, // Set the desired height
-                    child: Builder(
-                      builder: (context) => TextButton(
-                        onPressed: () {
-                          // Use the context provided by the Builder widget.
-                          _onBasicAlertPressed(context);
-                        },
-                        child: Text('Alert test'),
-                      ),
-                    ),
-                  ),
+                  // SizedBox(
+                  //   height: 40, // Set the desired height
+                  //   child: Builder(
+                  //     builder: (context) => TextButton(
+                  //       onPressed: () {
+                  //         // Use the context provided by the Builder widget.
+                  //         _onBasicAlertPressed(context);
+                  //       },
+                  //       child: Text('Alert test'),
+                  //     ),
+                  //   ),
+                  // ),
                 ],
               ),
               Divider(

@@ -40,6 +40,7 @@ Future<Map<String, dynamic>> initToolPath() async {
   var filePath = join(envVars['HOME']!,'perfConfig.json');
   File file=File(filePath);
   Map<String,dynamic>  data = await json.decode(await file.readAsString());
+  print(data);
   return data;
   // adbPath = data['adbPath'];
   // pythonPath = data['pythonPath'];
@@ -172,6 +173,7 @@ Future<String> executeCommand(String command, context) async {
         }else{
           finalCommand = join(data["pythonPath"],'python3 -m '+command);
         }
+        print(finalCommand);
         var result = await shell.run(finalCommand);
         return result.outText;
       } on ShellException catch (e) {
